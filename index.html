@@ -84,14 +84,15 @@
   <canvas id="game" width="528" height="528"></canvas>
   <div class="legend">
     <span class="chip" style="background:#2e9d3a">PB95 +1</span>
-    <span class="chip" style="background:#e08a00">PB98 +2</span>
-    <span class="chip" style="background:#222">ON +1</span>
-    <span class="chip" style="background:#1565c0">ON+ +3</span>
+    <span class="chip" style="background:#1a237e">PB98 +2</span>
+    <span class="chip" style="background:#111">ON +1</span>
+    <span class="chip" style="background:#c0c4c8;color:#111;border-color:#fff">ON+ +3</span>
   </div>
   <div class="hint">Strzałki / WASD / przesunięcie palcem · Spacja lub dotyk = start / pauza</div>
   <div class="modes">
-    <button type="button" class="mode" id="m-cienias">CIENIAS<small>przez ściany, wracasz z drugiej strony</small></button>
-    <button type="button" class="mode" id="m-pro">PRO<small>ściany = BOOOM</small></button>
+    <button type="button" class="mode" id="m-cienias">CIENIAS</button>
+    <button type="button" class="mode" id="m-pro">PRO</button>
+    <button type="button" class="mode" id="m-mega">MEGA PRO</button>
   </div>
 
 <script>
@@ -108,9 +109,9 @@
 
   var FUELS = [
     { label: "95",  color: "#2e9d3a", pts: 1, w: 4 },
-    { label: "98",  color: "#e08a00", pts: 2, w: 2 },
-    { label: "ON",  color: "#222222", pts: 1, w: 4 },
-    { label: "ON+", color: "#1565c0", pts: 3, w: 1 }
+    { label: "98",  color: "#1a237e", pts: 2, w: 2 },
+    { label: "ON",  color: "#111111", pts: 1, w: 4 },
+    { label: "ON+", color: "#c0c4c8", text: "#111111", pts: 3, w: 1 }
   ];
 
   var snake, dir, queue, food, score, best, state, timer;
@@ -119,7 +120,7 @@
   var mode = "pro";   // "pro" albo "cienias"
   try {
     var savedMode = localStorage.getItem("cysterna-mode");
-    if (savedMode === "cienias" || savedMode === "pro") mode = savedMode;
+    if (savedMode === "cienias" || savedMode === "pro" || savedMode === "mega") mode = savedMode;
   } catch (e) {}
 
   function loadBest() {
@@ -216,12 +217,86 @@
     return FUELS[0];
   }
 
+  // ---------- przeszkody (tryb MEGA PRO): opony i jeleń ----------
+  var obstacles = [], deer = null, stepCount = 0;
+
+  function tireAt(x, y) {
+    for (var i = 0; i < obstacles.length; i++) {
+      if (obstacles[i].x === x && obstacles[i].y === y) return true;
+    }
+    return false;
+  }
+
+  function obstacleAt(x, y) {
+    return tireAt(x, y) || (deer && deer.x === x && deer.y === y);
+  }
+
+  function snakeAt(x, y) {
+    for (var i = 0; i < snake.length; i++) {
+      if (snake[i].x === x && snake[i].y === y) return true;
+    }
+    return false;
+  }
+
+  function randomFreeCell(minDist) {
+    var h = snake[0];
+    for (var tries = 0; tries < 200; tries++) {
+      var x = Math.floor(Math.random() * N), y = Math.floor(Math.random() * N);
+      if (snakeAt(x, y) || obstacleAt(x, y)) continue;
+      if (food && food.x === x && food.y === y) continue;
+      if (Math.max(Math.abs(h.x - x), Math.abs(h.y - y)) <= minDist) continue;
+      return { x: x, y: y };
+    }
+    return null;
+  }
+
+  function initObstacles() {
+    var i, c;
+    for (i = 0; i < 6; i++) {
+      c = randomFreeCell(4);
+      if (c) obstacles.push({ x: c.x, y: c.y });
+    }
+    c = randomFreeCell(5);
+    if (c) deer = { x: c.x, y: c.y, face: 1 };
+    stepCount = 0;
+  }
+
+  function addTire() {
+    if (obstacles.length >= 16) return;
+    var c = randomFreeCell(5);
+    if (c) obstacles.push({ x: c.x, y: c.y });
+  }
+
+  function moveDeer() {
+    if (!deer) return;
+    stepCount++;
+    if (stepCount % 3 !== 0) return;
+    var dirs = [[1, 0], [-1, 0], [0, 1], [0, -1]];
+    var opts = [];
+    for (var i = 0; i < dirs.length; i++) {
+      var nx = deer.x + dirs[i][0], ny = deer.y + dirs[i][1];
+      if (nx < 0 || ny < 0 || nx >= N || ny >= N) continue;
+      if (snakeAt(nx, ny) || tireAt(nx, ny)) continue;
+      if (food && food.x === nx && food.y === ny) continue;
+      opts.push([nx, ny]);
+    }
+    if (!opts.length) return;
+    var o = opts[Math.floor(Math.random() * opts.length)];
+    if (o[0] !== deer.x) deer.face = o[0] > deer.x ? 1 : -1;
+    deer.x = o[0];
+    deer.y = o[1];
+  }
+
   function reset() {
     snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
     dir = { x: 1, y: 0 };
     queue = [];
     score = 0;
     scoreEl.textContent = score;
+    food = null;
+    obstacles = [];
+    deer = null;
+    if (mode === "mega") initObstacles();
     placeFood();
     crash = null;
     particles = [];
@@ -233,7 +308,7 @@
     var free = [];
     for (var x = 0; x < N; x++) {
       for (var y = 0; y < N; y++) {
-        if (!snake.some(function (s) { return s.x === x && s.y === y; })) {
+        if (!snake.some(function (s) { return s.x === x && s.y === y; }) && !obstacleAt(x, y)) {
           free.push({ x: x, y: y });
         }
       }
@@ -241,7 +316,7 @@
     if (!free.length) { food = null; return; }
     var c = free[Math.floor(Math.random() * free.length)];
     var f = pickFuel();
-    food = { x: c.x, y: c.y, label: f.label, color: f.color, pts: f.pts };
+    food = { x: c.x, y: c.y, label: f.label, color: f.color, text: f.text || "#fff", pts: f.pts };
   }
 
   function speed() { return Math.max(70, 130 - score * 2); }
@@ -285,7 +360,8 @@
     var hitSelf = snake.some(function (s, i) {
       return i < snake.length - 1 && s.x === head.x && s.y === head.y;
     });
-    if (hitWall || hitSelf) return gameOver();
+    var hitObs = mode === "mega" && obstacleAt(head.x, head.y);
+    if (hitWall || hitSelf || hitObs) return gameOver();
 
     snake.unshift(head);
     if (food && head.x === food.x && head.y === food.y) {
@@ -294,10 +370,12 @@
       // cysterna rośnie o tyle członów, ile punktów
       for (var k = 1; k < food.pts; k++) snake.push({ x: snake[snake.length - 1].x, y: snake[snake.length - 1].y });
       placeFood();
+      if (mode === "mega") addTire();
     } else {
       snake.pop();
     }
-    if (!food) gameOver();
+    if (!food) { gameOver(); return; }
+    if (mode === "mega") moveDeer();
   }
 
   var crash = null, particles = [], crashStart = 0, lastTs = 0;
@@ -319,9 +397,10 @@
       x: M + h.x * CELL + CELL / 2 + dir.x * CELL * 0.6,
       y: M + h.y * CELL + CELL / 2 + dir.y * CELL * 0.6
     };
-    if (mode === "cienias") {
-      // w trybie CIENIAS zderzenie jest zawsze z własną naczepą, więc wybuch w tym polu
-      var hx = (h.x + dir.x + N) % N, hy = (h.y + dir.y + N) % N;
+    var hx = h.x + dir.x, hy = h.y + dir.y;
+    if (mode === "cienias") { hx = (hx + N) % N; hy = (hy + N) % N; }
+    if (hx >= 0 && hy >= 0 && hx < N && hy < N) {
+      // wybuch dokładnie w polu, w które wjechała cysterna (naczepa, opona, jeleń)
       crash = { x: M + hx * CELL + CELL / 2, y: M + hy * CELL + CELL / 2 };
     }
     particles = [];
@@ -461,7 +540,7 @@
     ctx.strokeStyle = "#fff";
     ctx.lineWidth = 1.5;
     rr(ctx, x, y, s, s, 5); ctx.stroke();
-    ctx.fillStyle = "#fff";
+    ctx.fillStyle = food.text || "#fff";
     ctx.font = "bold 9px Arial, sans-serif";
     ctx.textAlign = "center";
     ctx.textBaseline = "middle";
@@ -533,8 +612,89 @@
     }
   }
 
+  function drawTire(x, y) {
+    var cx = M + x * CELL + CELL / 2, cy = M + y * CELL + CELL / 2;
+    ctx.fillStyle = "rgba(0,0,0,0.35)";
+    circle(ctx, cx + 1, cy + 2, 10);
+    ctx.fillStyle = "#141414";
+    circle(ctx, cx, cy, 10);
+    ctx.fillStyle = "#3a3a3a";
+    for (var k = 0; k < 10; k++) {
+      var an = (k / 10) * Math.PI * 2;
+      circle(ctx, cx + Math.cos(an) * 8.6, cy + Math.sin(an) * 8.6, 1.1);
+    }
+    ctx.strokeStyle = "#3a3a3a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.arc(cx, cy, 6, 0, Math.PI * 2);
+    ctx.stroke();
+    ctx.fillStyle = "#9e9e9e";
+    circle(ctx, cx, cy, 3.5);
+    ctx.fillStyle = "#555";
+    circle(ctx, cx, cy, 1.4);
+  }
+
+  function drawDeer() {
+    var cx = M + deer.x * CELL + CELL / 2, cy = M + deer.y * CELL + CELL / 2;
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.scale(deer.face, 1);
+    // cień
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    ctx.beginPath();
+    ctx.ellipse(0, 9, 9, 2.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // nogi
+    ctx.strokeStyle = "#5d3a1a";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(-5, 3); ctx.lineTo(-5, 9);
+    ctx.moveTo(-2, 3); ctx.lineTo(-2, 9);
+    ctx.moveTo(3, 3);  ctx.lineTo(3, 9);
+    ctx.moveTo(6, 3);  ctx.lineTo(6, 9);
+    ctx.stroke();
+    // tułów
+    ctx.fillStyle = "#8d5a2b";
+    ctx.beginPath();
+    ctx.ellipse(0, 0, 9, 5.5, 0, 0, Math.PI * 2);
+    ctx.fill();
+    // szyja i głowa
+    ctx.strokeStyle = "#8d5a2b";
+    ctx.lineWidth = 4;
+    ctx.beginPath();
+    ctx.moveTo(5, -2); ctx.lineTo(8, -6);
+    ctx.stroke();
+    ctx.fillStyle = "#8d5a2b";
+    circle(ctx, 8.5, -6.5, 3.5);
+    // poroże
+    ctx.strokeStyle = "#e6d3a3";
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(8, -9.5); ctx.lineTo(6, -13.5);
+    ctx.moveTo(9, -9.5); ctx.lineTo(12, -13.5);
+    ctx.moveTo(7, -11.5); ctx.lineTo(4, -11.5);
+    ctx.moveTo(10.5, -11.5); ctx.lineTo(13, -10);
+    ctx.stroke();
+    // ogon, oko, łaty
+    ctx.fillStyle = "#fff";
+    circle(ctx, -9, -1, 2);
+    ctx.fillStyle = "rgba(255,255,255,0.7)";
+    circle(ctx, -2, -2, 0.9);
+    circle(ctx, 2, 0, 0.9);
+    circle(ctx, -4, 1.5, 0.9);
+    ctx.fillStyle = "#000";
+    circle(ctx, 10, -7, 0.9);
+    ctx.restore();
+  }
+
+  function drawObstacles() {
+    for (var i = 0; i < obstacles.length; i++) drawTire(obstacles[i].x, obstacles[i].y);
+    if (deer) drawDeer();
+  }
+
   function drawScene() {
     ctx.drawImage(bg, 0, 0);
+    drawObstacles();
     drawFuel();
     for (var i = snake.length - 1; i >= 0; i--) drawSegment(i);
   }
@@ -612,18 +772,21 @@
   // ---------- wybór trybu ----------
   var btnC = document.getElementById("m-cienias");
   var btnP = document.getElementById("m-pro");
+  var btnM = document.getElementById("m-mega");
 
   function setMode(m) {
     mode = m;
     try { localStorage.setItem("cysterna-mode", m); } catch (e) {}
     btnC.classList.toggle("active", m === "cienias");
     btnP.classList.toggle("active", m === "pro");
+    btnM.classList.toggle("active", m === "mega");
     clearTimeout(timer);
     loadBest();
     reset();
   }
   btnC.addEventListener("click", function () { setMode("cienias"); this.blur(); });
   btnP.addEventListener("click", function () { setMode("pro"); this.blur(); });
+  btnM.addEventListener("click", function () { setMode("mega"); this.blur(); });
 
   setMode(mode);
 })();

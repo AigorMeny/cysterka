@@ -4,12 +4,12 @@ Gra w stylu Snake: prowadzisz cysternę po drodze otoczonej zielenią i zbierasz
 
 ## Paliwa
 
-| Paliwo | Punkty |
-|--------|--------|
-| PB95   | +1     |
-| PB98   | +2     |
-| ON     | +1     |
-| ON+    | +3     |
+| Paliwo | Kolor     | Punkty |
+|--------|-----------|--------|
+| PB95   | zielony   | +1     |
+| PB98   | granatowy | +2     |
+| ON     | czarny    | +1     |
+| ON+    | srebrny   | +3     |
 
 ## Sterowanie
 
@@ -19,10 +19,11 @@ Gra w stylu Snake: prowadzisz cysternę po drodze otoczonej zielenią i zbierasz
 
 ## Tryby gry
 
-Wybierasz je w dwóch okienkach na dole ekranu. Każdy tryb ma osobny rekord.
+Wybierasz je w trzech okienkach na dole ekranu. Każdy tryb ma osobny rekord.
 
 - **CIENIAS** – możesz wyjechać za ścianę i wracasz z drugiej strony planszy.
 - **PRO** – zjechanie z drogi na trawę kończy grę.
+- **MEGA PRO** – jak PRO, a na drodze leżą opony i spaceruje jeleń. Z każdym zebranym paliwem przybywa opon.
 
 ## Zasady
 
