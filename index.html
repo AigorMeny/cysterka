@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Cysterna</title>
+<title>Cysterka</title>
 <style>
   * { box-sizing: border-box; }
   html, body {
@@ -23,21 +23,60 @@
     -webkit-user-select: none;
     touch-action: none;
   }
-  h1 { margin: 0; font-size: 26px; letter-spacing: 6px; }
+  .brand { display: flex; align-items: center; gap: 12px; }
+  .logo { display: block; filter: drop-shadow(0 2px 3px rgba(0,0,0,0.5)); }
+  h1 {
+    margin: 0;
+    font-size: 32px;
+    font-weight: 900;
+    letter-spacing: 4px;
+    text-shadow: 0 3px 0 #7f0000, 0 5px 8px rgba(0,0,0,0.5);
+  }
   .scores { display: flex; gap: 28px; font-size: 16px; font-weight: bold; }
   canvas {
     border: 3px solid #0b1d0f;
     border-radius: 8px;
-    width: min(94vw, 62vh, 528px);
-    height: min(94vw, 62vh, 528px);
+    width: min(94vw, 56vh, 528px);
+    height: min(94vw, 56vh, 528px);
   }
   .legend { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-size: 12px; }
   .chip { padding: 3px 8px; border-radius: 10px; font-weight: bold; color: #fff; border: 1.5px solid #fff; }
   .hint { font-size: 12px; color: #9fc4a4; text-align: center; padding: 0 10px; }
+  .modes { display: flex; gap: 10px; width: min(94vw, 528px); }
+  .mode {
+    flex: 1;
+    padding: 8px 6px;
+    border: 2px solid #3f6b45;
+    border-radius: 10px;
+    background: #1d3f24;
+    color: #cfe8d2;
+    font-family: inherit;
+    font-weight: 900;
+    font-size: 15px;
+    letter-spacing: 1px;
+    line-height: 1.2;
+    cursor: pointer;
+  }
+  .mode small { display: block; font-weight: normal; font-size: 11px; letter-spacing: 0; opacity: 0.9; margin-top: 2px; }
+  .mode.active { background: #c62828; border-color: #fff; color: #fff; }
 </style>
 </head>
 <body>
-  <h1>CYSTERNA</h1>
+  <div class="brand">
+    <svg class="logo" viewBox="0 0 64 64" width="54" height="54" aria-hidden="true">
+      <rect x="2" y="2" width="60" height="60" rx="14" fill="#c62828"/>
+      <rect x="2" y="2" width="60" height="60" rx="14" fill="none" stroke="#fff" stroke-width="3"/>
+      <path d="M32 6c4 5 6 8 6 11a6 6 0 0 1-12 0c0-3 2-6 6-11z" fill="#fff"/>
+      <rect x="9" y="30" width="32" height="17" rx="8.5" fill="#eceff1"/>
+      <rect x="23" y="30" width="4" height="17" fill="#ef6c00"/>
+      <path d="M43 33h8l5 6v8H43z" fill="#263238"/>
+      <path d="M46 35h4l3 4h-7z" fill="#b3e5fc"/>
+      <circle cx="19" cy="48" r="4.5" fill="#111" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="33" cy="48" r="4.5" fill="#111" stroke="#fff" stroke-width="1.5"/>
+      <circle cx="49" cy="48" r="4.5" fill="#111" stroke="#fff" stroke-width="1.5"/>
+    </svg>
+    <h1>CYSTERKA</h1>
+  </div>
   <div class="scores">
     <div>Wynik: <span id="score">0</span></div>
     <div>Rekord: <span id="best">0</span></div>
@@ -50,6 +89,10 @@
     <span class="chip" style="background:#1565c0">ON+ +3</span>
   </div>
   <div class="hint">Strzałki / WASD / przesunięcie palcem · Spacja lub dotyk = start / pauza</div>
+  <div class="modes">
+    <button type="button" class="mode" id="m-cienias">CIENIAS<small>przez ściany, wracasz z drugiej strony</small></button>
+    <button type="button" class="mode" id="m-pro">PRO<small>ściany = BOOOM</small></button>
+  </div>
 
 <script>
 (function () {
@@ -73,9 +116,18 @@
   var snake, dir, queue, food, score, best, state, timer;
   // state: "ready" | "running" | "paused" | "over"
 
-  best = 0;
-  try { best = parseInt(localStorage.getItem("cysterna-best"), 10) || 0; } catch (e) {}
-  bestEl.textContent = best;
+  var mode = "pro";   // "pro" albo "cienias"
+  try {
+    var savedMode = localStorage.getItem("cysterna-mode");
+    if (savedMode === "cienias" || savedMode === "pro") mode = savedMode;
+  } catch (e) {}
+
+  function loadBest() {
+    best = 0;
+    try { best = parseInt(localStorage.getItem("cysterna-best-" + mode), 10) || 0; } catch (e) {}
+    bestEl.textContent = best;
+  }
+  loadBest();
 
   // ---------- pomocnicze rysowanie ----------
   function rr(g, x, y, w, h, r) {
@@ -171,6 +223,8 @@
     score = 0;
     scoreEl.textContent = score;
     placeFood();
+    crash = null;
+    particles = [];
     state = "ready";
     draw();
   }
@@ -220,7 +274,14 @@
     if (queue.length) dir = queue.shift();
     var head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
 
-    var hitWall = head.x < 0 || head.y < 0 || head.x >= N || head.y >= N;
+    var hitWall = false;
+    if (mode === "cienias") {
+      // przejazd przez ścianę – wracasz z drugiej strony
+      head.x = (head.x + N) % N;
+      head.y = (head.y + N) % N;
+    } else {
+      hitWall = head.x < 0 || head.y < 0 || head.x >= N || head.y >= N;
+    }
     var hitSelf = snake.some(function (s, i) {
       return i < snake.length - 1 && s.x === head.x && s.y === head.y;
     });
@@ -239,14 +300,147 @@
     if (!food) gameOver();
   }
 
+  var crash = null, particles = [], crashStart = 0, lastTs = 0;
+
   function gameOver() {
-    state = "over";
     clearTimeout(timer);
     if (score > best) {
       best = score;
       bestEl.textContent = best;
-      try { localStorage.setItem("cysterna-best", best); } catch (e) {}
+      try { localStorage.setItem("cysterna-best-" + mode, best); } catch (e) {}
     }
+    startCrash();
+  }
+
+  // ---------- kolizja: wybuch + BOOOM ----------
+  function startCrash() {
+    var h = snake[0];
+    crash = {
+      x: M + h.x * CELL + CELL / 2 + dir.x * CELL * 0.6,
+      y: M + h.y * CELL + CELL / 2 + dir.y * CELL * 0.6
+    };
+    if (mode === "cienias") {
+      // w trybie CIENIAS zderzenie jest zawsze z własną naczepą, więc wybuch w tym polu
+      var hx = (h.x + dir.x + N) % N, hy = (h.y + dir.y + N) % N;
+      crash = { x: M + hx * CELL + CELL / 2, y: M + hy * CELL + CELL / 2 };
+    }
+    particles = [];
+    var i, a, sp;
+    for (i = 0; i < 46; i++) {
+      a = Math.random() * Math.PI * 2;
+      sp = 1 + Math.random() * 4.5;
+      particles.push({ x: crash.x, y: crash.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp,
+                       life: 0, max: 500 + Math.random() * 500, size: 2 + Math.random() * 3, kind: "spark" });
+    }
+    for (i = 0; i < 14; i++) {
+      a = Math.random() * Math.PI * 2;
+      sp = 0.3 + Math.random() * 1.2;
+      particles.push({ x: crash.x, y: crash.y, vx: Math.cos(a) * sp, vy: Math.sin(a) * sp - 0.3,
+                       life: 0, max: 900 + Math.random() * 600, size: 8 + Math.random() * 8, kind: "smoke" });
+    }
+    state = "crashing";
+    crashStart = 0;
+    lastTs = 0;
+    requestAnimationFrame(crashFrame);
+  }
+
+  function drawBoom(scale) {
+    ctx.save();
+    ctx.translate(SIZE / 2, SIZE / 2 - 50);
+    ctx.scale(scale, scale);
+    ctx.rotate(-0.08);
+    ctx.font = "900 48px 'Arial Black', Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.lineJoin = "round";
+    ctx.lineWidth = 9;
+    ctx.strokeStyle = "#3e1200";
+    ctx.strokeText("BOOOM!", 0, 0);
+    var g = ctx.createLinearGradient(0, -24, 0, 24);
+    g.addColorStop(0, "#fff176");
+    g.addColorStop(1, "#ff6f00");
+    ctx.fillStyle = g;
+    ctx.fillText("BOOOM!", 0, 0);
+    ctx.restore();
+  }
+
+  function crashFrame(ts) {
+    if (state !== "crashing") return;
+    if (!crashStart) { crashStart = ts; lastTs = ts; }
+    var t = ts - crashStart;
+    var dt = Math.min(40, ts - lastTs);
+    lastTs = ts;
+
+    ctx.save();
+    if (t < 600) {
+      var k = (1 - t / 600) * 5;
+      ctx.translate((Math.random() - 0.5) * k * 2, (Math.random() - 0.5) * k * 2);
+    }
+    drawScene();
+
+    // kula ognia
+    var r = Math.min(1, t / 450);
+    var rad = 8 + 44 * (1 - Math.pow(1 - r, 3));
+    var fade = t < 900 ? 1 : Math.max(0, 1 - (t - 900) / 700);
+    ctx.globalAlpha = fade;
+    var grd = ctx.createRadialGradient(crash.x, crash.y, 2, crash.x, crash.y, rad);
+    grd.addColorStop(0, "#fffde7");
+    grd.addColorStop(0.35, "#ffeb3b");
+    grd.addColorStop(0.7, "#ff9800");
+    grd.addColorStop(1, "rgba(211,47,47,0)");
+    ctx.fillStyle = grd;
+    circle(ctx, crash.x, crash.y, rad);
+    ctx.globalAlpha = 1;
+
+    // błysk
+    if (t < 140) {
+      ctx.fillStyle = "rgba(255,255,255," + (0.6 * (1 - t / 140)) + ")";
+      ctx.fillRect(0, 0, SIZE, SIZE);
+    }
+
+    // iskry i dym
+    for (var i = 0; i < particles.length; i++) {
+      var p = particles[i];
+      p.life += dt;
+      if (p.life > p.max) continue;
+      p.x += p.vx;
+      p.y += p.vy;
+      var al = 1 - p.life / p.max;
+      if (p.kind === "spark") {
+        p.vy += 0.04;
+        ctx.globalAlpha = al;
+        ctx.fillStyle = p.life < p.max * 0.4 ? "#ffd54f" : "#ff7043";
+        ctx.fillRect(p.x, p.y, p.size, p.size);
+        ctx.globalAlpha = 1;
+      } else {
+        ctx.fillStyle = "rgba(60,60,60," + (0.5 * al) + ")";
+        circle(ctx, p.x, p.y, p.size * (1 + (p.life / p.max) * 1.5));
+      }
+    }
+
+    // napis BOOOM!
+    if (t > 60) {
+      var u = t - 60;
+      var sc = u < 200 ? 0.3 + (u / 200) * 1.0 : u < 350 ? 1.3 - ((u - 200) / 150) * 0.3 : 1;
+      drawBoom(sc);
+    }
+    ctx.restore();
+
+    if (t < 1700) {
+      requestAnimationFrame(crashFrame);
+    } else {
+      state = "over";
+      draw();
+    }
+  }
+
+  function drawScorch() {
+    if (!crash) return;
+    ctx.fillStyle = "rgba(0,0,0,0.4)";
+    circle(ctx, crash.x, crash.y, 18);
+    ctx.fillStyle = "#ff7043";
+    circle(ctx, crash.x - 5, crash.y + 3, 2);
+    circle(ctx, crash.x + 6, crash.y - 4, 1.5);
   }
 
   function turn(nx, ny) {
@@ -281,6 +475,9 @@
     var fx, fy;
     if (i === 0) { fx = dir.x; fy = dir.y; }
     else { fx = snake[i - 1].x - s.x; fy = snake[i - 1].y - s.y; }
+    // przejście przez ścianę (tryb CIENIAS) – kierunek zawsze o jedno pole
+    if (fx > 1) fx = -1; else if (fx < -1) fx = 1;
+    if (fy > 1) fy = -1; else if (fy < -1) fy = 1;
     if (fx === 0 && fy === 0) { fx = dir.x; fy = dir.y; }
     var C = CELL;
 
@@ -336,26 +533,39 @@
     }
   }
 
-  function draw() {
+  function drawScene() {
     ctx.drawImage(bg, 0, 0);
     drawFuel();
     for (var i = snake.length - 1; i >= 0; i--) drawSegment(i);
-    if (state !== "running") overlay();
+  }
+
+  function draw() {
+    drawScene();
+    if (state === "over") drawScorch();
+    if (state !== "running" && state !== "crashing") overlay();
   }
 
   function overlay() {
-    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    ctx.fillStyle = state === "over" ? "rgba(0,0,0,0.55)" : "rgba(0,0,0,0.65)";
     ctx.fillRect(M, M, N * CELL, N * CELL);
-    ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
     ctx.textBaseline = "alphabetic";
-    ctx.font = "bold 30px Arial, sans-serif";
-    var title = state === "over" ? "KONIEC TRASY" : state === "paused" ? "PAUZA" : "CYSTERNA";
-    ctx.fillText(title, SIZE / 2, SIZE / 2 - 10);
+
+    if (state === "over") {
+      drawBoom(1);
+      ctx.fillStyle = "#fff";
+      ctx.font = "bold 22px Arial, sans-serif";
+      ctx.fillText("Wynik: " + score, SIZE / 2, SIZE / 2 + 30);
+      ctx.font = "14px Arial, sans-serif";
+      ctx.fillText("Spacja / dotknij = jeszcze raz", SIZE / 2, SIZE / 2 + 58);
+      return;
+    }
+
+    ctx.fillStyle = "#fff";
+    ctx.font = "900 32px Arial, sans-serif";
+    ctx.fillText(state === "paused" ? "PAUZA" : "CYSTERKA", SIZE / 2, SIZE / 2 - 10);
     ctx.font = "14px Arial, sans-serif";
-    var sub = state === "over" ? "Wynik: " + score + " · Spacja / dotknij = jeszcze raz"
-                               : "Spacja / dotknij = start";
-    ctx.fillText(sub, SIZE / 2, SIZE / 2 + 20);
+    ctx.fillText("Spacja / dotknij = start", SIZE / 2, SIZE / 2 + 20);
   }
 
   // ---------- sterowanie ----------
@@ -399,7 +609,23 @@
     if (state === "running") pause(); else start();
   });
 
-  reset();
+  // ---------- wybór trybu ----------
+  var btnC = document.getElementById("m-cienias");
+  var btnP = document.getElementById("m-pro");
+
+  function setMode(m) {
+    mode = m;
+    try { localStorage.setItem("cysterna-mode", m); } catch (e) {}
+    btnC.classList.toggle("active", m === "cienias");
+    btnP.classList.toggle("active", m === "pro");
+    clearTimeout(timer);
+    loadBest();
+    reset();
+  }
+  btnC.addEventListener("click", function () { setMode("cienias"); this.blur(); });
+  btnP.addEventListener("click", function () { setMode("pro"); this.blur(); });
+
+  setMode(mode);
 })();
 </script>
 </body>
