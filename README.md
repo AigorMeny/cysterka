@@ -1,6 +1,15 @@
-# Snake
+# Cysterna
 
-Klasyczna gra Snake w wersji czarno-białej. Jeden plik HTML, bez zależności – wystarczy otworzyć `index.html` w przeglądarce.
+Gra w stylu Snake: prowadzisz cysternę po drodze otoczonej zielenią i zbierasz paliwa. Z każdym zebranym paliwem cysterna dostaje kolejny zbiornik. Jeden plik HTML, bez zależności – wystarczy otworzyć `index.html` w przeglądarce.
+
+## Paliwa
+
+| Paliwo | Punkty |
+|--------|--------|
+| PB95   | +1     |
+| PB98   | +2     |
+| ON     | +1     |
+| ON+    | +3     |
 
 ## Sterowanie
 
@@ -10,14 +19,12 @@ Klasyczna gra Snake w wersji czarno-białej. Jeden plik HTML, bez zależności �
 
 ## Zasady
 
-Zbieraj puste kwadraty (jedzenie), żeby rosnąć. Gra kończy się po uderzeniu w ścianę lub we własny ogon. Rekord zapisuje się w przeglądarce.
+Zjechanie z drogi na trawę albo uderzenie we własną naczepę kończy grę. Im więcej punktów, tym szybciej jedzie cysterna. Rekord zapisuje się w przeglądarce.
 
-## Uruchomienie
+## Uruchomienie online (GitHub Pages)
 
-Otwórz `index.html` dwukrotnym kliknięciem albo wystaw grę online przez GitHub Pages:
-
-1. Wejdź w **Settings → Pages** swojego repozytorium.
-2. W sekcji *Build and deployment* wybierz **Deploy from a branch**, gałąź `main` i folder `/ (root)`.
+1. Repozytorium musi być publiczne.
+2. Wejdź w **Settings → Pages**, wybierz **Deploy from a branch**, gałąź `main` i folder `/ (root)`, kliknij **Save**.
 3. Po minucie gra będzie dostępna pod `https://TWOJ-LOGIN.github.io/NAZWA-REPO/`.
 
 ## Licencja

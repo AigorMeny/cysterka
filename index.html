@@ -3,45 +3,53 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
-<title>Snake</title>
+<title>Cysterna</title>
 <style>
   * { box-sizing: border-box; }
   html, body {
     margin: 0;
     height: 100%;
-    background: #000;
+    background: #14301a;
     color: #fff;
-    font-family: "Courier New", monospace;
+    font-family: Arial, Helvetica, sans-serif;
   }
   body {
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 12px;
+    gap: 10px;
     user-select: none;
     -webkit-user-select: none;
     touch-action: none;
   }
-  h1 { margin: 0; font-size: 28px; letter-spacing: 8px; }
-  .scores { display: flex; gap: 32px; font-size: 16px; }
+  h1 { margin: 0; font-size: 26px; letter-spacing: 6px; }
+  .scores { display: flex; gap: 28px; font-size: 16px; font-weight: bold; }
   canvas {
-    border: 2px solid #fff;
-    width: min(92vw, 70vh, 480px);
-    height: min(92vw, 70vh, 480px);
-    image-rendering: pixelated;
+    border: 3px solid #0b1d0f;
+    border-radius: 8px;
+    width: min(94vw, 62vh, 528px);
+    height: min(94vw, 62vh, 528px);
   }
-  .hint { font-size: 12px; color: #aaa; text-align: center; }
+  .legend { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; font-size: 12px; }
+  .chip { padding: 3px 8px; border-radius: 10px; font-weight: bold; color: #fff; border: 1.5px solid #fff; }
+  .hint { font-size: 12px; color: #9fc4a4; text-align: center; padding: 0 10px; }
 </style>
 </head>
 <body>
-  <h1>SNAKE</h1>
+  <h1>CYSTERNA</h1>
   <div class="scores">
     <div>Wynik: <span id="score">0</span></div>
     <div>Rekord: <span id="best">0</span></div>
   </div>
-  <canvas id="game" width="400" height="400"></canvas>
-  <div class="hint">Strzałki / WASD / przesunięcie palcem · Spacja = start / pauza</div>
+  <canvas id="game" width="528" height="528"></canvas>
+  <div class="legend">
+    <span class="chip" style="background:#2e9d3a">PB95 +1</span>
+    <span class="chip" style="background:#e08a00">PB98 +2</span>
+    <span class="chip" style="background:#222">ON +1</span>
+    <span class="chip" style="background:#1565c0">ON+ +3</span>
+  </div>
+  <div class="hint">Strzałki / WASD / przesunięcie palcem · Spacja lub dotyk = start / pauza</div>
 
 <script>
 (function () {
@@ -50,16 +58,111 @@
   var scoreEl = document.getElementById("score");
   var bestEl = document.getElementById("best");
 
-  var N = 20;                       // plansza N x N
-  var CELL = canvas.width / N;
-  var SPEED = 120;                  // ms na krok
+  var N = 20;                 // pola drogi N x N
+  var CELL = 24;
+  var M = 24;                 // margines z trawą
+  var SIZE = N * CELL + 2 * M;
+
+  var FUELS = [
+    { label: "95",  color: "#2e9d3a", pts: 1, w: 4 },
+    { label: "98",  color: "#e08a00", pts: 2, w: 2 },
+    { label: "ON",  color: "#222222", pts: 1, w: 4 },
+    { label: "ON+", color: "#1565c0", pts: 3, w: 1 }
+  ];
 
   var snake, dir, queue, food, score, best, state, timer;
   // state: "ready" | "running" | "paused" | "over"
 
   best = 0;
-  try { best = parseInt(localStorage.getItem("snake-best"), 10) || 0; } catch (e) {}
+  try { best = parseInt(localStorage.getItem("cysterna-best"), 10) || 0; } catch (e) {}
   bestEl.textContent = best;
+
+  // ---------- pomocnicze rysowanie ----------
+  function rr(g, x, y, w, h, r) {
+    g.beginPath();
+    g.moveTo(x + r, y);
+    g.arcTo(x + w, y, x + w, y + h, r);
+    g.arcTo(x + w, y + h, x, y + h, r);
+    g.arcTo(x, y + h, x, y, r);
+    g.arcTo(x, y, x + w, y, r);
+    g.closePath();
+  }
+  function circle(g, x, y, r) {
+    g.beginPath();
+    g.arc(x, y, r, 0, Math.PI * 2);
+    g.fill();
+  }
+
+  // ---------- tło: droga + zieleń (rysowane raz) ----------
+  var bg = document.createElement("canvas");
+  bg.width = bg.height = SIZE;
+  (function () {
+    var g = bg.getContext("2d");
+    var seed = 7;
+    function rnd() { seed = (seed * 16807) % 2147483647; return seed / 2147483647; }
+    var i;
+
+    // trawa
+    g.fillStyle = "#3e8e41";
+    g.fillRect(0, 0, SIZE, SIZE);
+    for (i = 0; i < 450; i++) {
+      g.fillStyle = rnd() < 0.5 ? "#47994a" : "#37803a";
+      g.fillRect(rnd() * SIZE, rnd() * SIZE, 3, 3);
+    }
+
+    // droga
+    var R = N * CELL;
+    g.fillStyle = "#3b3b3d";
+    g.fillRect(M, M, R, R);
+    for (i = 0; i < 350; i++) {
+      g.fillStyle = rnd() < 0.5 ? "#454547" : "#333335";
+      g.fillRect(M + rnd() * R, M + rnd() * R, 2, 2);
+    }
+
+    // linie przy krawędzi i przerywane pasy
+    g.strokeStyle = "#f5f5f5";
+    g.lineWidth = 2;
+    g.strokeRect(M + 3, M + 3, R - 6, R - 6);
+    g.setLineDash([12, 12]);
+    g.strokeStyle = "rgba(255,255,255,0.55)";
+    g.beginPath();
+    g.moveTo(M + R / 2, M + 6); g.lineTo(M + R / 2, M + R - 6);
+    g.moveTo(M + 6, M + R / 2); g.lineTo(M + R - 6, M + R / 2);
+    g.stroke();
+    g.setLineDash([]);
+
+    // drzewa wokół drogi
+    function tree(x, y, r) {
+      g.fillStyle = "rgba(0,0,0,0.25)";
+      circle(g, x + 2, y + 3, r);
+      g.fillStyle = "#1f5c25";
+      circle(g, x, y, r);
+      g.fillStyle = "#2f7d32";
+      circle(g, x - r * 0.25, y - r * 0.25, r * 0.62);
+    }
+    for (i = 0; i < N + 2; i++) {
+      var p = M / 2 + i * CELL;
+      if (i % 2 === 0) {
+        tree(p, M / 2 + (rnd() - 0.5) * 4, 8 + rnd() * 3);
+        tree(p, SIZE - M / 2 + (rnd() - 0.5) * 4, 8 + rnd() * 3);
+      } else {
+        tree(M / 2 + (rnd() - 0.5) * 4, p, 8 + rnd() * 3);
+        tree(SIZE - M / 2 + (rnd() - 0.5) * 4, p, 8 + rnd() * 3);
+      }
+    }
+  })();
+
+  // ---------- logika ----------
+  function pickFuel() {
+    var total = 0, i;
+    for (i = 0; i < FUELS.length; i++) total += FUELS[i].w;
+    var r = Math.random() * total;
+    for (i = 0; i < FUELS.length; i++) {
+      r -= FUELS[i].w;
+      if (r < 0) return FUELS[i];
+    }
+    return FUELS[0];
+  }
 
   function reset() {
     snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
@@ -81,13 +184,18 @@
         }
       }
     }
-    food = free.length ? free[Math.floor(Math.random() * free.length)] : null;
+    if (!free.length) { food = null; return; }
+    var c = free[Math.floor(Math.random() * free.length)];
+    var f = pickFuel();
+    food = { x: c.x, y: c.y, label: f.label, color: f.color, pts: f.pts };
   }
+
+  function speed() { return Math.max(70, 130 - score * 2); }
 
   function loop() {
     step();
     draw();
-    if (state === "running") timer = setTimeout(loop, SPEED);
+    if (state === "running") timer = setTimeout(loop, speed());
   }
 
   function start() {
@@ -95,7 +203,7 @@
     if (state === "ready" || state === "paused") {
       state = "running";
       clearTimeout(timer);
-      timer = setTimeout(loop, SPEED);
+      timer = setTimeout(loop, speed());
     }
     draw();
   }
@@ -114,20 +222,21 @@
 
     var hitWall = head.x < 0 || head.y < 0 || head.x >= N || head.y >= N;
     var hitSelf = snake.some(function (s, i) {
-      // ogon się przesunie, więc nie liczymy ostatniego segmentu
       return i < snake.length - 1 && s.x === head.x && s.y === head.y;
     });
     if (hitWall || hitSelf) return gameOver();
 
     snake.unshift(head);
     if (food && head.x === food.x && head.y === food.y) {
-      score++;
+      score += food.pts;
       scoreEl.textContent = score;
+      // cysterna rośnie o tyle członów, ile punktów
+      for (var k = 1; k < food.pts; k++) snake.push({ x: snake[snake.length - 1].x, y: snake[snake.length - 1].y });
       placeFood();
     } else {
       snake.pop();
     }
-    if (!food) gameOver(); // plansza pełna – wygrana
+    if (!food) gameOver();
   }
 
   function gameOver() {
@@ -136,56 +245,120 @@
     if (score > best) {
       best = score;
       bestEl.textContent = best;
-      try { localStorage.setItem("snake-best", best); } catch (e) {}
+      try { localStorage.setItem("cysterna-best", best); } catch (e) {}
     }
   }
 
   function turn(nx, ny) {
     var last = queue.length ? queue[queue.length - 1] : dir;
-    if (nx === -last.x && ny === -last.y) return; // brak zawracania
+    if (nx === -last.x && ny === -last.y) return;
     if (nx === last.x && ny === last.y) return;
     if (queue.length < 2) queue.push({ x: nx, y: ny });
   }
 
-  function draw() {
-    ctx.fillStyle = "#000";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-    // jedzenie – pusty biały kwadrat
-    if (food) {
-      ctx.strokeStyle = "#fff";
-      ctx.lineWidth = 2;
-      ctx.strokeRect(food.x * CELL + 4, food.y * CELL + 4, CELL - 8, CELL - 8);
-    }
-
-    // wąż – pełne białe kwadraty
+  // ---------- rysowanie ----------
+  function drawFuel() {
+    if (!food) return;
+    var x = M + food.x * CELL + 2, y = M + food.y * CELL + 2, s = CELL - 4;
+    ctx.fillStyle = "rgba(0,0,0,0.3)";
+    rr(ctx, x + 1, y + 2, s, s, 5); ctx.fill();
+    ctx.fillStyle = food.color;
+    rr(ctx, x, y, s, s, 5); ctx.fill();
+    ctx.strokeStyle = "#fff";
+    ctx.lineWidth = 1.5;
+    rr(ctx, x, y, s, s, 5); ctx.stroke();
     ctx.fillStyle = "#fff";
-    snake.forEach(function (s) {
-      ctx.fillRect(s.x * CELL + 1, s.y * CELL + 1, CELL - 2, CELL - 2);
-    });
+    ctx.font = "bold 9px Arial, sans-serif";
+    ctx.textAlign = "center";
+    ctx.textBaseline = "middle";
+    ctx.fillText(food.label, x + s / 2, y + s / 2 + 0.5);
+  }
 
-    // głowa z czarną kropką
-    ctx.fillStyle = "#000";
-    ctx.fillRect(snake[0].x * CELL + CELL / 2 - 2, snake[0].y * CELL + CELL / 2 - 2, 4, 4);
+  function drawSegment(i) {
+    var s = snake[i];
+    var cx = M + s.x * CELL + CELL / 2;
+    var cy = M + s.y * CELL + CELL / 2;
+    var fx, fy;
+    if (i === 0) { fx = dir.x; fy = dir.y; }
+    else { fx = snake[i - 1].x - s.x; fy = snake[i - 1].y - s.y; }
+    if (fx === 0 && fy === 0) { fx = dir.x; fy = dir.y; }
+    var C = CELL;
 
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.atan2(fy, fx));
+
+    // koła
+    ctx.fillStyle = "#111";
+    ctx.fillRect(-9, -C / 2 + 0.5, 7, 3);
+    ctx.fillRect(-9, C / 2 - 3.5, 7, 3);
+    ctx.fillRect(3, -C / 2 + 0.5, 7, 3);
+    ctx.fillRect(3, C / 2 - 3.5, 7, 3);
+
+    if (i === 0) {
+      // kabina
+      ctx.fillStyle = "#c62828";
+      rr(ctx, -C / 2 + 1, -C / 2 + 3, C - 2, C - 6, 4); ctx.fill();
+      ctx.strokeStyle = "#7f0000"; ctx.lineWidth = 1;
+      rr(ctx, -C / 2 + 1, -C / 2 + 3, C - 2, C - 6, 4); ctx.stroke();
+      // szyba
+      ctx.fillStyle = "#b3e5fc";
+      ctx.fillRect(C / 2 - 10, -C / 2 + 6, 5, C - 12);
+      // światła
+      ctx.fillStyle = "#fff59d";
+      ctx.fillRect(C / 2 - 3, -C / 2 + 4, 2, 3);
+      ctx.fillRect(C / 2 - 3, C / 2 - 7, 2, 3);
+    } else {
+      // zbiornik
+      ctx.fillStyle = "#eceff1";
+      rr(ctx, -C / 2 + 1, -C / 2 + 3, C - 2, C - 6, 6); ctx.fill();
+      ctx.strokeStyle = "#90a4ae"; ctx.lineWidth = 1;
+      rr(ctx, -C / 2 + 1, -C / 2 + 3, C - 2, C - 6, 6); ctx.stroke();
+      // połysk
+      ctx.fillStyle = "rgba(255,255,255,0.9)";
+      ctx.fillRect(-C / 2 + 5, -C / 2 + 5, C - 10, 2);
+      // pas ostrzegawczy
+      ctx.fillStyle = "#ef6c00";
+      ctx.fillRect(-1.5, -C / 2 + 3.5, 3, C - 7);
+    }
+    ctx.restore();
+
+    // ogólne godło na pierwszym zbiorniku (rysowane bez obrotu)
+    if (i === 1) {
+      ctx.fillStyle = "#d50000";
+      circle(ctx, cx, cy, 6.5);
+      ctx.fillStyle = "#fff";
+      ctx.beginPath();
+      ctx.moveTo(cx, cy - 4);
+      ctx.bezierCurveTo(cx + 4, cy, cx + 3, cy + 4, cx, cy + 4);
+      ctx.bezierCurveTo(cx - 3, cy + 4, cx - 4, cy, cx, cy - 4);
+      ctx.fill();
+    }
+  }
+
+  function draw() {
+    ctx.drawImage(bg, 0, 0);
+    drawFuel();
+    for (var i = snake.length - 1; i >= 0; i--) drawSegment(i);
     if (state !== "running") overlay();
   }
 
   function overlay() {
-    ctx.fillStyle = "rgba(0,0,0,0.7)";
-    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "rgba(0,0,0,0.65)";
+    ctx.fillRect(M, M, N * CELL, N * CELL);
     ctx.fillStyle = "#fff";
     ctx.textAlign = "center";
-    ctx.font = "bold 28px 'Courier New', monospace";
-    var title = state === "over" ? "KONIEC GRY" : state === "paused" ? "PAUZA" : "SNAKE";
-    ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 10);
-    ctx.font = "14px 'Courier New', monospace";
+    ctx.textBaseline = "alphabetic";
+    ctx.font = "bold 30px Arial, sans-serif";
+    var title = state === "over" ? "KONIEC TRASY" : state === "paused" ? "PAUZA" : "CYSTERNA";
+    ctx.fillText(title, SIZE / 2, SIZE / 2 - 10);
+    ctx.font = "14px Arial, sans-serif";
     var sub = state === "over" ? "Wynik: " + score + " · Spacja / dotknij = jeszcze raz"
                                : "Spacja / dotknij = start";
-    ctx.fillText(sub, canvas.width / 2, canvas.height / 2 + 20);
+    ctx.fillText(sub, SIZE / 2, SIZE / 2 + 20);
   }
 
-  // klawiatura
+  // ---------- sterowanie ----------
   document.addEventListener("keydown", function (e) {
     var k = e.key;
     var map = {
@@ -204,7 +377,6 @@
     }
   });
 
-  // dotyk: przesunięcie = kierunek, krótkie dotknięcie = start/pauza
   var tx = 0, ty = 0;
   canvas.addEventListener("touchstart", function (e) {
     var t = e.changedTouches[0];
