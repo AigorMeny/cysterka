@@ -1,0 +1,234 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Snake</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    height: 100%;
+    background: #000;
+    color: #fff;
+    font-family: "Courier New", monospace;
+  }
+  body {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+  }
+  h1 { margin: 0; font-size: 28px; letter-spacing: 8px; }
+  .scores { display: flex; gap: 32px; font-size: 16px; }
+  canvas {
+    border: 2px solid #fff;
+    width: min(92vw, 70vh, 480px);
+    height: min(92vw, 70vh, 480px);
+    image-rendering: pixelated;
+  }
+  .hint { font-size: 12px; color: #aaa; text-align: center; }
+</style>
+</head>
+<body>
+  <h1>SNAKE</h1>
+  <div class="scores">
+    <div>Wynik: <span id="score">0</span></div>
+    <div>Rekord: <span id="best">0</span></div>
+  </div>
+  <canvas id="game" width="400" height="400"></canvas>
+  <div class="hint">Strzałki / WASD / przesunięcie palcem · Spacja = start / pauza</div>
+
+<script>
+(function () {
+  var canvas = document.getElementById("game");
+  var ctx = canvas.getContext("2d");
+  var scoreEl = document.getElementById("score");
+  var bestEl = document.getElementById("best");
+
+  var N = 20;                       // plansza N x N
+  var CELL = canvas.width / N;
+  var SPEED = 120;                  // ms na krok
+
+  var snake, dir, queue, food, score, best, state, timer;
+  // state: "ready" | "running" | "paused" | "over"
+
+  best = 0;
+  try { best = parseInt(localStorage.getItem("snake-best"), 10) || 0; } catch (e) {}
+  bestEl.textContent = best;
+
+  function reset() {
+    snake = [{ x: 10, y: 10 }, { x: 9, y: 10 }, { x: 8, y: 10 }];
+    dir = { x: 1, y: 0 };
+    queue = [];
+    score = 0;
+    scoreEl.textContent = score;
+    placeFood();
+    state = "ready";
+    draw();
+  }
+
+  function placeFood() {
+    var free = [];
+    for (var x = 0; x < N; x++) {
+      for (var y = 0; y < N; y++) {
+        if (!snake.some(function (s) { return s.x === x && s.y === y; })) {
+          free.push({ x: x, y: y });
+        }
+      }
+    }
+    food = free.length ? free[Math.floor(Math.random() * free.length)] : null;
+  }
+
+  function loop() {
+    step();
+    draw();
+    if (state === "running") timer = setTimeout(loop, SPEED);
+  }
+
+  function start() {
+    if (state === "over") reset();
+    if (state === "ready" || state === "paused") {
+      state = "running";
+      clearTimeout(timer);
+      timer = setTimeout(loop, SPEED);
+    }
+    draw();
+  }
+
+  function pause() {
+    if (state === "running") {
+      state = "paused";
+      clearTimeout(timer);
+      draw();
+    }
+  }
+
+  function step() {
+    if (queue.length) dir = queue.shift();
+    var head = { x: snake[0].x + dir.x, y: snake[0].y + dir.y };
+
+    var hitWall = head.x < 0 || head.y < 0 || head.x >= N || head.y >= N;
+    var hitSelf = snake.some(function (s, i) {
+      // ogon się przesunie, więc nie liczymy ostatniego segmentu
+      return i < snake.length - 1 && s.x === head.x && s.y === head.y;
+    });
+    if (hitWall || hitSelf) return gameOver();
+
+    snake.unshift(head);
+    if (food && head.x === food.x && head.y === food.y) {
+      score++;
+      scoreEl.textContent = score;
+      placeFood();
+    } else {
+      snake.pop();
+    }
+    if (!food) gameOver(); // plansza pełna – wygrana
+  }
+
+  function gameOver() {
+    state = "over";
+    clearTimeout(timer);
+    if (score > best) {
+      best = score;
+      bestEl.textContent = best;
+      try { localStorage.setItem("snake-best", best); } catch (e) {}
+    }
+  }
+
+  function turn(nx, ny) {
+    var last = queue.length ? queue[queue.length - 1] : dir;
+    if (nx === -last.x && ny === -last.y) return; // brak zawracania
+    if (nx === last.x && ny === last.y) return;
+    if (queue.length < 2) queue.push({ x: nx, y: ny });
+  }
+
+  function draw() {
+    ctx.fillStyle = "#000";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+    // jedzenie – pusty biały kwadrat
+    if (food) {
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.strokeRect(food.x * CELL + 4, food.y * CELL + 4, CELL - 8, CELL - 8);
+    }
+
+    // wąż – pełne białe kwadraty
+    ctx.fillStyle = "#fff";
+    snake.forEach(function (s) {
+      ctx.fillRect(s.x * CELL + 1, s.y * CELL + 1, CELL - 2, CELL - 2);
+    });
+
+    // głowa z czarną kropką
+    ctx.fillStyle = "#000";
+    ctx.fillRect(snake[0].x * CELL + CELL / 2 - 2, snake[0].y * CELL + CELL / 2 - 2, 4, 4);
+
+    if (state !== "running") overlay();
+  }
+
+  function overlay() {
+    ctx.fillStyle = "rgba(0,0,0,0.7)";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.fillStyle = "#fff";
+    ctx.textAlign = "center";
+    ctx.font = "bold 28px 'Courier New', monospace";
+    var title = state === "over" ? "KONIEC GRY" : state === "paused" ? "PAUZA" : "SNAKE";
+    ctx.fillText(title, canvas.width / 2, canvas.height / 2 - 10);
+    ctx.font = "14px 'Courier New', monospace";
+    var sub = state === "over" ? "Wynik: " + score + " · Spacja / dotknij = jeszcze raz"
+                               : "Spacja / dotknij = start";
+    ctx.fillText(sub, canvas.width / 2, canvas.height / 2 + 20);
+  }
+
+  // klawiatura
+  document.addEventListener("keydown", function (e) {
+    var k = e.key;
+    var map = {
+      ArrowUp: [0, -1], w: [0, -1], W: [0, -1],
+      ArrowDown: [0, 1], s: [0, 1], S: [0, 1],
+      ArrowLeft: [-1, 0], a: [-1, 0], A: [-1, 0],
+      ArrowRight: [1, 0], d: [1, 0], D: [1, 0]
+    };
+    if (map[k]) {
+      e.preventDefault();
+      if (state === "ready" || state === "paused") start();
+      turn(map[k][0], map[k][1]);
+    } else if (k === " " || k === "Enter") {
+      e.preventDefault();
+      if (state === "running") pause(); else start();
+    }
+  });
+
+  // dotyk: przesunięcie = kierunek, krótkie dotknięcie = start/pauza
+  var tx = 0, ty = 0;
+  canvas.addEventListener("touchstart", function (e) {
+    var t = e.changedTouches[0];
+    tx = t.clientX; ty = t.clientY;
+    e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener("touchend", function (e) {
+    var t = e.changedTouches[0];
+    var dx = t.clientX - tx, dy = t.clientY - ty;
+    if (Math.abs(dx) < 20 && Math.abs(dy) < 20) {
+      if (state === "running") pause(); else start();
+    } else {
+      if (state === "ready" || state === "paused") start();
+      if (Math.abs(dx) > Math.abs(dy)) turn(dx > 0 ? 1 : -1, 0);
+      else turn(0, dy > 0 ? 1 : -1);
+    }
+    e.preventDefault();
+  }, { passive: false });
+  canvas.addEventListener("click", function () {
+    if (state === "running") pause(); else start();
+  });
+
+  reset();
+})();
+</script>
+</body>
+</html>
